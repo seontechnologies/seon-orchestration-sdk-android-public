@@ -1,1 +1,1 @@
-# seon-orchestration-sdk-android-public
+# SEON Orchestration Android SDK
