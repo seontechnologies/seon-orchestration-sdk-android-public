@@ -47,6 +47,22 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
       
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > keystore.jks
+
+      - name: Generate local.properties
+        run: |
+          echo "signing.storeFile=keystore.jks" >> local.properties
+          echo "signing.storePassword=${{ secrets.STORE_PASSWORD }}" >> local.properties
+          echo "signing.keyAlias=${{ secrets.KEY_ALIAS }}" >> local.properties
+          echo "signing.keyPassword=${{ secrets.KEY_PASSWORD }}" >> local.properties
+          echo "gpgSigning.keyId=XXXX" >> local.properties
+          echo "gpgSigning.keyPassword=XXXX" >> local.properties
+          echo "gpgSigning.privateKey=XXXX" >> local.properties
+          echo "ossrh.username=XXXX" >> local.properties
+          echo "ossrh.password=XXXX" >> local.properties
+          echo "sdkVersion=XXXX" >> local.properties
+      
       - name: Extract version from README
         id: extract_readme_version
         run: |
