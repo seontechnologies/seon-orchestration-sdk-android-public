@@ -1,1 +1,6 @@
-# seon-orchestration-sdk-android-public
+# SEON Orchestration Android SDK
+
+# Changelog
+
+## 1.6.3
+-   Initial Version
