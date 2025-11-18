@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Seon Sample App</string>
+    <string name="verification_flow_result">Verification Flow Result: %1s</string>
+    <string name="start_verification_button">Start Verification</string>
+    <string name="base_url">Base URL</string>
+    <string name="liveness_type">Liveness Type</string>
+    <string name="license_key">License Key</string>
+    <string name="country_iso_code">Country ISO Code</string>
+    <string name="template_id">Template Id</string>\
+    <string name="name">Name</string>
+    <string name="address">Address</string>
+    <string name="postal_code">Postal Code</string>
+    <string name="date_of_birth">Date of Birth</string>
+</resources>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Seon Példa Alkalmazás</string>
+    <string name="verification_flow_result">Azonosítási Folyamat Eredménye: %1s</string>
+    <string name="start_verification_button">Azonosítás Indítása</string>
+    <string name="base_url">Alap URL</string>
+    <string name="liveness_type">Liveness Típus</string>
+    <string name="license_key">Liszensz Kulcs</string>
+    <string name="country_iso_code">Ország ISO kód</string>
+    <string name="template_id">Sablon Azonosító</string>
+    <string name="name">Név</string>
+    <string name="address">Cím</string>
+    <string name="postal_code">Irányítószám</string>
+    <string name="date_of_birth">Születési dátum</string>
+</resources>

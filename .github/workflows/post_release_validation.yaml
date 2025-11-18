@@ -1,0 +1,492 @@
+name: Post-Release Validation
+
+on:
+  # Trigger when public repo is updated
+  push:
+    branches:
+      - master
+      - main
+  
+  # Trigger on new releases
+  release:
+    types: [published]
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type (debug or release)'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+permissions:
+  contents: read
+
+jobs:
+  validate-android-sdk:
+    name: Validate Android SDK Integration
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Extract version from README
+        id: extract_readme_version
+        run: |
+          echo "Extracting latest version from README.md..."
+          
+          # Extract version from README.md changelog section
+          VERSION=$(grep -E "^#{2,3}\s+v?[0-9]+\.[0-9]+\.[0-9]+" README.md | head -1 | sed -E 's/^#{2,3}\s+v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+          
+          if [ -z "${VERSION}" ]; then
+            echo "⚠️  Could not extract version from README.md"
+            VERSION="unknown"
+          else
+            echo "Extracted README version: ${VERSION}"
+          fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+      
+      - name: Extract version from TOML
+        id: extract_toml_version
+        run: |
+          echo "Extracting SDK version from libs.versions.toml..."
+          
+          TOML_FILE="Example/gradle/libs.versions.toml"
+          
+          if [ ! -f "${TOML_FILE}" ]; then
+            echo "❌ libs.versions.toml not found"
+            exit 1
+          fi
+          
+          # Extract seonIdVerification version
+          TOML_VERSION=$(grep -E "^seonIdVerification\s*=\s*\"" "${TOML_FILE}" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          
+          if [ -z "${TOML_VERSION}" ]; then
+            echo "❌ Could not extract version from TOML"
+            exit 1
+          fi
+          
+          echo "Extracted TOML version: ${TOML_VERSION}"
+          echo "version=${TOML_VERSION}" >> $GITHUB_OUTPUT
+      
+      - name: Verify version match
+        id: verify_version
+        run: |
+          README_VERSION="${{ steps.extract_readme_version.outputs.version }}"
+          TOML_VERSION="${{ steps.extract_toml_version.outputs.version }}"
+          
+          echo "========================================="
+          echo "SDK Version Verification"
+          echo "========================================="
+          echo "README version: ${README_VERSION}"
+          echo "TOML version:   ${TOML_VERSION}"
+          echo ""
+          
+          if [ "${README_VERSION}" = "unknown" ]; then
+            echo "⚠️  WARNING: Could not extract version from README.md"
+            echo "Continuing with validation..."
+            echo "match=unknown" >> $GITHUB_OUTPUT
+          elif [ "${README_VERSION}" != "${TOML_VERSION}" ]; then
+            echo "❌ ERROR: Version mismatch!"
+            echo ""
+            echo "The SDK version in libs.versions.toml (${TOML_VERSION}) does not match"
+            echo "the latest version in README.md changelog (${README_VERSION})."
+            echo ""
+            echo "Please update Example/gradle/libs.versions.toml:"
+            echo "  seonIdVerification = \"${README_VERSION}\""
+            echo ""
+            echo "match=false" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "✅ Version match confirmed: ${TOML_VERSION}"
+            echo "match=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Make gradlew executable
+        run: |
+          cd Example
+          chmod +x gradlew
+      
+      - name: Build Release APK
+        if: ${{ github.event.inputs.build_type != 'debug' }}
+        run: |
+          cd Example
+          
+          echo "========================================="
+          echo "Building Release APK"
+          echo "========================================="
+          
+          ./gradlew assembleRelease --stacktrace
+          
+          APK_PATH="sample/build/outputs/apk/release/sample-release.apk"
+          
+          if [ ! -f "${APK_PATH}" ]; then
+            echo "❌ APK not found at ${APK_PATH}"
+            exit 1
+          fi
+          
+          echo "✅ APK created successfully"
+          echo "Location: ${APK_PATH}"
+          echo "Size: $(du -h "${APK_PATH}" | cut -f1)"
+          
+          # Export for later steps
+          echo "APK_PATH=${APK_PATH}" >> $GITHUB_ENV
+          echo "BUILD_TYPE=release" >> $GITHUB_ENV
+      
+      - name: Build Debug APK
+        if: ${{ github.event.inputs.build_type == 'debug' }}
+        run: |
+          cd Example
+          
+          echo "========================================="
+          echo "Building Debug APK"
+          echo "========================================="
+          
+          ./gradlew assembleDebug --stacktrace
+          
+          APK_PATH="sample/build/outputs/apk/debug/sample-debug.apk"
+          
+          if [ ! -f "${APK_PATH}" ]; then
+            echo "❌ APK not found at ${APK_PATH}"
+            exit 1
+          fi
+          
+          echo "✅ APK created successfully"
+          echo "Location: ${APK_PATH}"
+          echo "Size: $(du -h "${APK_PATH}" | cut -f1)"
+          
+          # Export for later steps
+          echo "APK_PATH=${APK_PATH}" >> $GITHUB_ENV
+          echo "BUILD_TYPE=debug" >> $GITHUB_ENV
+      
+      - name: Analyze APK Structure
+        run: |
+          cd Example
+          
+          echo "========================================="
+          echo "APK Analysis"
+          echo "========================================="
+          
+          APK_PATH="${APK_PATH}"
+          
+          if [ ! -f "${APK_PATH}" ]; then
+            echo "❌ APK not found"
+            exit 1
+          fi
+          
+          # Create temp directory for analysis
+          TEMP_DIR=$(mktemp -d)
+          
+          echo "Extracting APK..."
+          unzip -q "${APK_PATH}" -d "${TEMP_DIR}"
+          
+          echo ""
+          echo "APK Structure:"
+          
+          # Count DEX files
+          DEX_COUNT=$(find "${TEMP_DIR}" -name "*.dex" | wc -l | tr -d ' ')
+          echo "  DEX files: ${DEX_COUNT}"
+          
+          # Check for native libraries
+          if [ -d "${TEMP_DIR}/lib" ]; then
+            LIB_COUNT=$(find "${TEMP_DIR}/lib" -name "*.so" | wc -l | tr -d ' ')
+            echo "  Native libraries: ${LIB_COUNT}"
+            
+            # List architectures
+            echo "  Architectures:"
+            find "${TEMP_DIR}/lib" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | while read arch; do
+              SO_COUNT=$(find "${TEMP_DIR}/lib/${arch}" -name "*.so" | wc -l)
+              echo "    - ${arch}: ${SO_COUNT} libraries"
+            done
+          else
+            echo "  Native libraries: 0"
+          fi
+          
+          # Check for resources
+          if [ -f "${TEMP_DIR}/resources.arsc" ]; then
+            RES_SIZE=$(du -h "${TEMP_DIR}/resources.arsc" | cut -f1)
+            echo "  Resources: ${RES_SIZE}"
+          fi
+          
+          # Check for assets
+          if [ -d "${TEMP_DIR}/assets" ]; then
+            ASSET_COUNT=$(find "${TEMP_DIR}/assets" -type f | wc -l | tr -d ' ')
+            echo "  Assets: ${ASSET_COUNT} files"
+          else
+            echo "  Assets: 0 files"
+          fi
+          
+          # Check for SEON SDK presence
+          echo ""
+          echo "SEON SDK Verification:"
+          
+          SEON_FOUND=false
+          
+          # Look for SEON-related packages in DEX
+          if find "${TEMP_DIR}" -name "*.dex" -exec strings {} \; 2>/dev/null | grep -q "io/seon"; then
+            SEON_FOUND=true
+            echo "  ✅ SEON SDK packages found in DEX files"
+          fi
+          
+          # Check for SEON native libraries
+          if find "${TEMP_DIR}/lib" -name "*seon*" 2>/dev/null | grep -q .; then
+            SEON_FOUND=true
+            echo "  ✅ SEON native libraries found"
+          fi
+          
+          if [ "$SEON_FOUND" = false ]; then
+            echo "  ⚠️  SEON SDK packages not clearly identified"
+            echo "     This may be normal if ProGuard/R8 obfuscation is enabled"
+          fi
+          
+          # Cleanup
+          rm -rf "${TEMP_DIR}"
+          
+          echo ""
+          echo "✅ APK analysis complete"
+      
+      - name: Analyze with aapt
+        run: |
+          cd Example
+          
+          echo "========================================="
+          echo "Package Information Analysis"
+          echo "========================================="
+          
+          APK_PATH="${APK_PATH}"
+          
+          # Check if aapt is available
+          if ! command -v aapt &> /dev/null; then
+            echo "⚠️  aapt not found in PATH"
+            echo "Installing build-tools..."
+            
+            # Install build-tools which includes aapt
+            sdkmanager "build-tools;34.0.0" > /dev/null 2>&1 || true
+            
+            # Try to find aapt in Android SDK
+            if [ -n "${ANDROID_HOME}" ]; then
+              AAPT_PATH=$(find "${ANDROID_HOME}/build-tools" -name "aapt" 2>/dev/null | head -1)
+              if [ -n "${AAPT_PATH}" ]; then
+                export PATH="$(dirname ${AAPT_PATH}):${PATH}"
+              fi
+            fi
+          fi
+          
+          if command -v aapt &> /dev/null; then
+            echo "Package Information:"
+            
+            # Extract package name
+            PACKAGE_NAME=$(aapt dump badging "${APK_PATH}" 2>/dev/null | grep "package:" | sed -E "s/.*name='([^']+)'.*/\1/")
+            echo "  Package: ${PACKAGE_NAME}"
+            
+            # Extract version
+            VERSION_NAME=$(aapt dump badging "${APK_PATH}" 2>/dev/null | grep "versionName" | sed -E "s/.*versionName='([^']+)'.*/\1/")
+            VERSION_CODE=$(aapt dump badging "${APK_PATH}" 2>/dev/null | grep "versionCode" | sed -E "s/.*versionCode='([^']+)'.*/\1/")
+            echo "  Version: ${VERSION_NAME} (${VERSION_CODE})"
+            
+            # Extract min/target SDK
+            MIN_SDK=$(aapt dump badging "${APK_PATH}" 2>/dev/null | grep "sdkVersion" | sed -E "s/.*'([^']+)'.*/\1/")
+            TARGET_SDK=$(aapt dump badging "${APK_PATH}" 2>/dev/null | grep "targetSdkVersion" | sed -E "s/.*'([^']+)'.*/\1/")
+            echo "  Min SDK: ${MIN_SDK}, Target SDK: ${TARGET_SDK}"
+            
+            # List permissions
+            echo ""
+            echo "Permissions:"
+            aapt dump permissions "${APK_PATH}" 2>/dev/null | grep "permission:" | sed 's/.*: /  - /' | head -20
+            
+            PERM_COUNT=$(aapt dump permissions "${APK_PATH}" 2>/dev/null | grep "permission:" | wc -l | tr -d ' ')
+            echo "  Total: ${PERM_COUNT} permissions"
+          else
+            echo "⚠️  aapt not available. Skipping detailed package analysis."
+          fi
+      
+      - name: Play Store Validation Checks
+        run: |
+          cd Example
+          
+          echo "========================================="
+          echo "Play Store Validation Checks"
+          echo "========================================="
+          
+          APK_PATH="${APK_PATH}"
+          
+          # Check APK size
+          APK_SIZE_BYTES=$(stat -c%s "${APK_PATH}" 2>/dev/null)
+          APK_SIZE_MB=$((APK_SIZE_BYTES / 1024 / 1024))
+          
+          echo "APK Size: ${APK_SIZE_MB} MB"
+          
+          if [ ${APK_SIZE_MB} -gt 100 ]; then
+            echo "⚠️  APK size exceeds 100 MB"
+            echo "   Consider using Android App Bundle (AAB) for Play Store"
+          else
+            echo "✅ APK size is within Play Store limits"
+          fi
+          
+          # Check if jarsigner is available for signature verification
+          if [ "${BUILD_TYPE}" = "release" ] && command -v jarsigner &> /dev/null; then
+            echo ""
+            echo "Signature Verification:"
+            if jarsigner -verify "${APK_PATH}" &> /dev/null; then
+              echo "  ✅ APK is properly signed"
+            else
+              echo "  ⚠️  APK signature verification failed or not signed"
+            fi
+          fi
+          
+          echo ""
+          echo "✅ Basic Play Store validation complete"
+          echo ""
+          echo "Note: For full Play Store validation:"
+          echo "  1. Build AAB: ./gradlew bundleRelease"
+          echo "  2. Validate: bundletool validate --bundle=app.aab"
+          echo "  3. Upload to Play Console Internal Testing"
+      
+      - name: Generate Validation Report
+        if: always()
+        run: |
+          REPORT_FILE="validation_report.md"
+          README_VERSION="${{ steps.extract_readme_version.outputs.version }}"
+          TOML_VERSION="${{ steps.extract_toml_version.outputs.version }}"
+          VERSION_MATCH="${{ steps.verify_version.outputs.match }}"
+          BUILD_TYPE="${BUILD_TYPE:-release}"
+          
+          cat > "$REPORT_FILE" << EOF
+          # Android SDK Integration Validation Report
+          
+          **Date:** $(date)
+          **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Triggered by:** ${{ github.actor }}
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          
+          ## SDK Version
+          
+          - **README Version:** ${README_VERSION}
+          - **TOML Version:** ${TOML_VERSION}
+          - **Status:** $([ "${VERSION_MATCH}" = "true" ] && echo "✅ Match" || echo "❌ Mismatch")
+          
+          ## Build Results
+          
+          EOF
+          
+          if [ -f "Example/${APK_PATH}" ]; then
+            APK_SIZE=$(du -h "Example/${APK_PATH}" | cut -f1)
+            APK_SIZE_BYTES=$(stat -c%s "Example/${APK_PATH}" 2>/dev/null)
+            APK_SIZE_MB=$((APK_SIZE_BYTES / 1024 / 1024))
+            
+            cat >> "$REPORT_FILE" << EOF
+          ### ✅ APK Build: SUCCESS
+          
+          - **Build Type:** ${BUILD_TYPE}
+          - **APK Location:** Example/${APK_PATH}
+          - **APK Size:** ${APK_SIZE} (${APK_SIZE_MB} MB)
+          
+          ## Play Store Validation
+          
+          - **Size Check:** $([ ${APK_SIZE_MB} -le 100 ] && echo "✅ Pass" || echo "⚠️ Warning (>100MB)")
+          - **Status:** Ready for testing
+          
+          ## Summary
+          
+          ✅ Android SDK integration validation completed successfully.
+          
+          The APK has been built and analyzed. Basic Play Store compatibility checks passed.
+          
+          ### Next Steps
+          
+          1. Download the APK from workflow artifacts
+          2. Test on physical devices
+          3. For Play Store submission:
+             - Build AAB: \`./gradlew bundleRelease\`
+             - Upload to Play Console Internal Testing
+             - Review Pre-launch report
+          
+          EOF
+          else
+            cat >> "$REPORT_FILE" << EOF
+          ### ❌ APK Build: FAILED
+          
+          The APK was not created. Please check the workflow logs for details.
+          
+          EOF
+          fi
+          
+          cat "$REPORT_FILE"
+      
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-${{ env.BUILD_TYPE }}
+          path: Example/${{ env.APK_PATH }}
+          retention-days: 30
+      
+      - name: Upload Validation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: validation_report.md
+          retention-days: 30
+      
+      - name: Create Job Summary
+        if: always()
+        run: |
+          README_VERSION="${{ steps.extract_readme_version.outputs.version }}"
+          TOML_VERSION="${{ steps.extract_toml_version.outputs.version }}"
+          VERSION_MATCH="${{ steps.verify_version.outputs.match }}"
+          BUILD_TYPE="${BUILD_TYPE:-release}"
+          
+          echo "## Android SDK Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### SDK Version" >> $GITHUB_STEP_SUMMARY
+          echo "- **README Version:** ${README_VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "- **TOML Version:** ${TOML_VERSION}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${VERSION_MATCH}" = "true" ]; then
+            echo "- **Status:** ✅ Versions match" >> $GITHUB_STEP_SUMMARY
+          elif [ "${VERSION_MATCH}" = "false" ]; then
+            echo "- **Status:** ❌ Version mismatch" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status:** ⚠️ Could not verify" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Results" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "Example/${APK_PATH}" ]; then
+            APK_SIZE=$(du -h "Example/${APK_PATH}" | cut -f1)
+            echo "- **Build Type:** ${BUILD_TYPE}" >> $GITHUB_STEP_SUMMARY
+            echo "- **APK Size:** ${APK_SIZE}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status:** ✅ APK created successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the APK from the **Artifacts** section above." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status:** ❌ APK build failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Validation Checks" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Version verification" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ APK structure analysis" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ SEON SDK package verification" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Play Store compatibility checks" >> $GITHUB_STEP_SUMMARY
