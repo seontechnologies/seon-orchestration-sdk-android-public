@@ -63,11 +63,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.seon.id_verification_android.pub.Constants.VERIFICATION_ERROR_KEY
 import io.seon.id_verification_android.pub.IDVService
-import io.seon.id_verification_android.pub.IDVFlowResult
+import io.seon.id_verification_android.pub.SEONOrchFlowResult
 import androidx.compose.ui.unit.sp
 import io.seon.id_verification.ui.theme.SeonidverificationTheme
 import io.seon.id_verification_android.pub.DateOfBirth
-import io.seon.id_verification_android.pub.IDVCustomerData
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -89,37 +88,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-//        WindowCompat.setDecorFitsSystemWindows(window, false)
-//        idvService.setThemeColors(
-//            textOnLight = Pair(getColor(R.color.black), getColor(R.color.white)),
-//            textOnDark = Pair(getColor(R.color.white), getColor(R.color.black)),
-//            accent = Pair(getColor(R.color.purple_200), getColor(R.color.purple_700)),
-//            onAccent = Pair(getColor(R.color.black), getColor(R.color.white)),
-//        )
-//        idvService.setCustomFonts(
-//            Font(R.font.comic_neue_regular),
-//            Font(R.font.comic_neue_italic),
-//            Font(R.font.comic_neue_bold)
-//        )
-//        idvService.setWatermarkImageVisibility(false)
-//        val drawable = getDrawable(R.drawable.gb_solutions_zrt_logo)
-//        if (drawable != null) {
-//            idvService.setWatermarkImage(drawable)
-//        }
         setContent {
             SampleContent(buttonClick = { baseUrl, licenceKey, countryISOCode, templateId, name, dateOfBirth, address, postalCode ->
                 if (!isNavigating) {
                     idvService.initialize(
                         baseUrl = baseUrl,
-                        customerData = IDVCustomerData(
-                            licenseKey = licenceKey,
-                            referenceId = UUID.randomUUID().toString(),
-                            countryISOCode = countryISOCode,
-                            name = name,
-                            dateOfBirth = dateOfBirth,
-                            address = address,
-                            postalCode = postalCode
-                        ),
                         templateId = templateId,
                     )
                     idvService.startVerificationFlow(
@@ -138,44 +111,50 @@ class MainActivity : ComponentActivity() {
     private fun handleVerificationResult(result: ActivityResult) {
         when (result.resultCode) {
 
-            IDVFlowResult.InterruptedByUser.code -> {
+            SEONOrchFlowResult.InterruptedByUser.code -> {
                 verificationResultTextColor.value = Color(red = 220, green = 120, blue = 0)
                 verificationResultText.value =
-                    IDVFlowResult.InterruptedByUser.name
+                    SEONOrchFlowResult.InterruptedByUser.name
             }
 
-            IDVFlowResult.Error.code -> {
+            SEONOrchFlowResult.Error.code -> {
                 val error = result.data?.getStringExtra(VERIFICATION_ERROR_KEY)
                 verificationResultTextColor.value = Color(red = 178, green = 34, blue = 34)
                 val trimmedError : String = when (error?.isNotEmpty()) {
                     true -> error
-                    else -> IDVFlowResult.Error.name
+                    else -> SEONOrchFlowResult.Error.name
                 }
                 verificationResultText.value = trimmedError
             }
 
-            IDVFlowResult.Completed.code -> {
+            SEONOrchFlowResult.Completed.code -> {
                 verificationResultTextColor.value = Color(red = 34, green = 139, blue = 34)
                 verificationResultText.value =
-                    IDVFlowResult.Completed.name
+                    SEONOrchFlowResult.Completed.name
             }
 
-            IDVFlowResult.CompletedSuccess.code -> {
+            SEONOrchFlowResult.CompletedSuccess.code -> {
                 verificationResultTextColor.value = Color(red = 34, green = 139, blue = 34)
                 verificationResultText.value =
-                    IDVFlowResult.CompletedSuccess.name
+                    SEONOrchFlowResult.CompletedSuccess.name
             }
 
-            IDVFlowResult.CompletedPending.code -> {
+            SEONOrchFlowResult.CompletedPending.code -> {
                 verificationResultTextColor.value = Color(red = 34, green = 139, blue = 34)
                 verificationResultText.value =
-                    IDVFlowResult.CompletedPending.name
+                    SEONOrchFlowResult.CompletedPending.name
             }
 
-            IDVFlowResult.CompletedFailed.code -> {
+            SEONOrchFlowResult.CompletedFailed.code -> {
                 verificationResultTextColor.value = Color(red = 178, green = 34, blue = 34)
                 verificationResultText.value =
-                    IDVFlowResult.CompletedFailed.name
+                    SEONOrchFlowResult.CompletedFailed.name
+            }
+
+            SEONOrchFlowResult.MissingLocationPermission.code -> {
+                verificationResultTextColor.value = Color(red = 178, green = 34, blue = 34)
+                verificationResultText.value =
+                    SEONOrchFlowResult.MissingLocationPermission.name
             }
         }
     }
