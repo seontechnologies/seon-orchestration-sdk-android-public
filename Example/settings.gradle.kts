@@ -23,5 +23,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "seon-idv-android-example"
+rootProject.name = "seon-orchestration-sdk-android-public"
 include(":sample")

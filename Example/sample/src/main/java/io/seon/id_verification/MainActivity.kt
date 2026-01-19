@@ -1,55 +1,36 @@
-package io.seon.id_verification
+package io.seon.orchestration_sample
 
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.WindowInsets
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DisplayMode
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -58,22 +39,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import io.seon.id_verification_android.pub.Constants.VERIFICATION_ERROR_KEY
-import io.seon.id_verification_android.pub.IDVService
-import io.seon.id_verification_android.pub.SEONOrchFlowResult
+import androidx.compose.ui.platform.testTag
+import io.seon.orch_sdk.pub.Constants.VERIFICATION_ERROR_KEY
+import io.seon.orch_sdk.pub.OrchestrationService
+import io.seon.orch_sdk.pub.SEONOrchFlowResult
 import androidx.compose.ui.unit.sp
-import io.seon.id_verification.ui.theme.SeonidverificationTheme
-import io.seon.id_verification_android.pub.DateOfBirth
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import java.util.Locale
-import java.util.UUID
+import io.seon.id_verification.ui.theme.SEONOrchTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -83,29 +55,71 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(StartActivityForResult()) { result: ActivityResult ->
             handleVerificationResult(result)
         }
-    private val idvService = IDVService.instance
+    private val orchestrationService = OrchestrationService.instance
     private var isNavigating = false
+
+    // ViewModel
+    private val viewModel: MainViewModel by viewModels {
+        MainViewModelFactory(orchestrationService)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            SampleContent(buttonClick = { baseUrl, licenceKey, countryISOCode, templateId, name, dateOfBirth, address, postalCode ->
-                if (!isNavigating) {
-                    idvService.initialize(
-                        baseUrl = baseUrl,
-                        templateId = templateId,
-                    )
-                    idvService.startVerificationFlow(
-                        verificationActivityResultLauncher,
-                        applicationContext
-                    )
-                    isNavigating = true
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        isNavigating = false
-                    }, 500L)
-                }
-            })
+
+        // Observe ViewModel events
+        lifecycleScope.launch {
+            viewModel.events.collect { event ->
+                event?.let { handleEvent(it) }
+            }
         }
+
+        setContent {
+            SampleContent(
+                buttonClick = { language, theme, sessionToken ->
+                    if (!isNavigating) {
+                        viewModel.onStartVerificationClicked(
+                            language = language,
+                            theme = theme,
+                            sessionToken = sessionToken
+                        )
+
+                        isNavigating = true
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            isNavigating = false
+                        }, 500L)
+                    }
+                }
+            )
+        }
+    }
+
+    private fun handleEvent(event: MainEvent) {
+        when (event) {
+            is MainEvent.ShowMessage -> {
+                android.widget.Toast.makeText(
+                    this,
+                    event.message,
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+            is MainEvent.ShowError -> {
+                android.widget.Toast.makeText(
+                    this,
+                    event.message,
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+            is MainEvent.StartVerificationFlow -> {
+                println("🚀 MainActivity: Received StartVerificationFlow event")
+                println("🔧 MainActivity: Calling orchestrationService.startVerificationFlow")
+                orchestrationService.startVerificationFlow(
+                    verificationActivityResultLauncher,
+                    applicationContext
+                )
+                println("✅ MainActivity: startWebVerificationFlow call completed")
+            }
+        }
+        viewModel.onEventConsumed()
     }
 
     private fun handleVerificationResult(result: ActivityResult) {
@@ -150,61 +164,58 @@ class MainActivity : ComponentActivity() {
                 verificationResultText.value =
                     SEONOrchFlowResult.CompletedFailed.name
             }
-
-            SEONOrchFlowResult.MissingLocationPermission.code -> {
-                verificationResultTextColor.value = Color(red = 178, green = 34, blue = 34)
-                verificationResultText.value =
-                    SEONOrchFlowResult.MissingLocationPermission.name
-            }
         }
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    fun SampleContent(buttonClick: (
-        baseUrl: String,
-        licenseKey: String,
-        countryISOCode: String?,
-        templateId: String?,
-        name: String?,
-        dateOfBirth: DateOfBirth?,
-        address: String?,
-        postalCode: String?
-    ) -> Unit) {
-
-        val baseUrl = remember { mutableStateOf("https://idv-eu.seon.io/") }
-        val expanded = remember { mutableStateOf(false) }
-        val licenseKeys = mapOf(
-            Pair("Selfie", ""),
-            Pair("Hand Gesture", ""),
-            Pair("Face Rotation", "")
-        )
-        val selectedLicenseKey = remember { mutableStateOf(Pair(licenseKeys.keys.first(), licenseKeys.values.first())) }
-        val countryISOCode = remember { mutableStateOf("") }
-        val templateId = remember { mutableStateOf("") }
-        val name = remember { mutableStateOf("") }
-        val address = remember { mutableStateOf("") }
-        val postalCode = remember { mutableStateOf("") }
-        val focusManager = LocalFocusManager.current
-        val today = LocalDate.now(ZoneId.systemDefault())
-        val defaultDate = today.minusYears(20)
-        val minDate = today.minusYears(150)
-        val maxDate = today
-        var showDialog = remember { mutableStateOf(false) }
-        val defaultMillis = defaultDate.toEpochMilli()
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = defaultMillis,
-            selectableDates = object : SelectableDates {
-                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    val date = LocalDate.ofEpochDay(utcTimeMillis / (24 * 60 * 60 * 1000))
-                    return !date.isBefore(minDate) && !date.isAfter(maxDate)
-                }
+    fun SampleContent(
+        buttonClick: (
+            language: String?,
+            theme: String?,
+            sessionToken: String?
+        ) -> Unit
+    ) {
+        val defaultTheme = """{
+            "light":{
+                "baseTextOnLight":"#000000",
+                "baseTextOnDark":"#FFFFFF",
+                "baseAccent":"#0063FF",
+                "baseOnAccent":"#FFFFFF"
             },
-            initialDisplayMode = DisplayMode.Picker
-        )
-        var selectedDate : MutableState<DateOfBirth?> = remember { mutableStateOf(null) }
-        var selectedDateToShow : MutableState<String?> = remember { mutableStateOf(null) }
-        SeonidverificationTheme {
+            "dark":{
+                "baseTextOnLight":"#FFFFFF",
+                "baseTextOnDark":"#000000",
+                "baseAccent":"#4185F2",
+                "baseOnAccent":"#000000"
+            },
+            "fontFamily":"idverif-default",
+            "fontUrl":"./fonts/Inter-VariableFont_slnt.ttf",
+            "fontWeight":"400"
+        }
+        """.trimMargin()
+        val defaultWorkflowParams = """{
+          "ip": "213.253.227.38",
+          "email": "abbas.sabetinezhad@seon.io",
+          "user_id": "abbas-2026-01-07-random330023647788e",
+          "user_dob": "1992-11-28",
+          "user_pob": "Dunaujvaros",
+          "user_zip": "15366",
+          "device_id": "A68JCP3C21403957",
+          "phone_number": "491713647162",
+          "user_country": "DE",
+          "user_fullname": "Abbas Sabetinezhad",
+          "reference_image": "e04d4b35-f038-4cd5-aeb3-1519ac674bb6"
+        }
+        """.trimMargin()
+
+        val language = remember { mutableStateOf("en") }
+        val customizeTheme = remember { mutableStateOf(false) }
+        val sessionToken = remember { mutableStateOf("YOUR_SESSION_TOKEN") }
+        val theme = remember { mutableStateOf(defaultTheme) }
+
+        val focusManager = LocalFocusManager.current
+        SEONOrchTheme {
             Scaffold { innerPadding ->
                 Surface(
                     modifier = Modifier.fillMaxSize()
@@ -239,235 +250,83 @@ class MainActivity : ComponentActivity() {
                             fontSize = 16.sp
                         )
 
+                        // Language Section
                         OutlinedTextField(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            value = baseUrl.value,
-                            maxLines = 1,
-                            onValueChange = {
-                                baseUrl.value = it
-                            },
-                            label = { Text(stringResource(id = R.string.base_url)) }
-                        )
-
-                        Box(
-                            Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = 16.dp)
+                                .testTag("language_text_field"),
+                            value = language.value,
+                            onValueChange = {
+                                language.value = it
+                            },
+                            maxLines = 1,
+                            label = { Text("Language (e.g., en, de, fr)") }
+                        )
+
+                        // Theme Section
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(
-                                verticalArrangement = Arrangement.Top,
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                OutlinedTextField(
-                                    modifier = Modifier
-                                        .fillMaxWidth(),
-                                    value = (selectedLicenseKey.value.first),
-                                    onValueChange = { },
-                                    label = { Text(stringResource(id = R.string.liveness_type)) },
-                                    trailingIcon = { Icon(Icons.Outlined.ArrowDropDown, null) },
-                                    readOnly = true
-                                )
-                                DropdownMenu(
-                                    modifier = Modifier
-                                        .fillMaxWidth(),
-                                    expanded = expanded.value,
-                                    onDismissRequest = { expanded.value = false }
-                                ) {
-                                    licenseKeys.forEach {
-                                        DropdownMenuItem(
-                                            onClick = {
-                                                selectedLicenseKey.value = Pair(it.key, it.value)
-                                                expanded.value = false
-                                            },
-                                            text = {
-                                                Text(
-                                                    fontSize = 16.sp,
-                                                    text = (it.key)
-                                                )
-                                            }
-                                        )
-                                    }
+                            Checkbox(
+                                modifier = Modifier.testTag("customize_theme_checkbox"),
+                                checked = customizeTheme.value,
+                                onCheckedChange = {
+                                    customizeTheme.value = it
                                 }
-                            }
-                            Spacer(
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .background(Color.Transparent)
-                                    .padding(start = 20.dp, end = 20.dp, top = 16.dp)
-                                    .clickable(
-                                        onClick = { expanded.value = !expanded.value }
-                                    )
+                            )
+                            Text(
+                                text = "Customize Theme",
+                                modifier = Modifier.padding(start = 8.dp)
                             )
                         }
 
                         OutlinedTextField(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            value = selectedLicenseKey.value.second,
-                            maxLines = 1,
-                            onValueChange = { newValue ->
-                                if (selectedLicenseKey.value.second != newValue) {
-                                    selectedLicenseKey.value = Pair(
-                                        licenseKeys.entries.find { it.value == newValue }?.key
-                                            ?: "-", newValue
-                                    )
-                                }
+                                .padding(bottom = 16.dp)
+                                .testTag("theme_text_field"),
+                            value = theme.value,
+                            onValueChange = {
+                                theme.value = it
                             },
-                            label = { Text(stringResource(id = R.string.license_key)) }
+                            enabled = customizeTheme.value,
+                            maxLines = 5,
+                            label = { Text("Theme") }
                         )
 
                         OutlinedTextField(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            value = countryISOCode.value,
-                            maxLines = 1,
+                                .padding(bottom = 16.dp)
+                                .testTag("session_token_text_field"),
+                            value = sessionToken.value,
                             onValueChange = {
-                                if (it.length <= 2) {
-                                    countryISOCode.value = it
-                                }
-                            },
-                            label = { Text(stringResource(id = R.string.country_iso_code)) },
-                            keyboardOptions = KeyboardOptions(
-                                capitalization = KeyboardCapitalization.Characters
-                            )
-                        )
-
-                        OutlinedTextField(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            value = templateId.value,
-                            maxLines = 1,
-                            onValueChange = {
-                                templateId.value = it
-                            },
-                            label = { Text(stringResource(id = R.string.template_id)) }
-                        )
-
-                        OutlinedTextField(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            value = name.value,
-                            maxLines = 1,
-                            onValueChange = {
-                                name.value = it
-                            },
-                            label = { Text(stringResource(id = R.string.name)) }
-                        )
-
-                        if (showDialog.value) {
-                            DatePickerDialog(
-                                onDismissRequest = { showDialog.value = false },
-                                confirmButton = {
-                                    TextButton(
-                                        onClick = {
-                                            selectedDate.value =
-                                                convertToDOB(datePickerState.selectedDateMillis)
-                                            selectedDateToShow.value =
-                                                formatDateToLocale(datePickerState.selectedDateMillis)
-                                            showDialog.value = false
-                                        }
-                                    ) {
-                                        Text("OK")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(
-                                        onClick = { showDialog.value = false }
-                                    ) {
-                                        Text("Cancel")
-                                    }
-                                }
-                            ) {
-                                DatePicker(
-                                    state = datePickerState,
-                                )
-                            }
-                        }
-
-                        OutlinedButton(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(80.dp)
-                                .padding(top = 8.dp, bottom = 16.dp),
-                            contentPadding = PaddingValues(16.dp),
-                            shape = RoundedCornerShape(5.dp),
-                            onClick = {
-                                showDialog.value = !showDialog.value
-                            }) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    selectedDateToShow.value
-                                        ?: stringResource(id = R.string.date_of_birth),
-                                    modifier = Modifier
-                                        .weight(1f),
-                                    textAlign = TextAlign.Start,
-                                    fontSize = 16.sp,
-                                )
-                                if (selectedDate.value != null) {
-                                    TextButton(
-                                        modifier = Modifier
-                                            .width(40.dp)
-                                            .height(30.dp),
-                                        onClick = {
-                                            selectedDate.value = null
-                                            selectedDateToShow.value = null
-                                        },
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text("Clear")
-                                    }
-                                }
-                            }
-                        }
-
-                        OutlinedTextField(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            value = address.value,
-                            onValueChange = {
-                                address.value = it
-                            },
-                            label = { Text(stringResource(id = R.string.address)) }
-                        )
-
-                        OutlinedTextField(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            value = postalCode.value,
-                            onValueChange = {
-                                postalCode.value = it
+                                sessionToken.value = it
                             },
                             maxLines = 1,
-                            label = { Text(stringResource(id = R.string.postal_code)) }
+                            label = { Text("Session Token") },
+                            placeholder = { Text("Paste JWT token here") }
                         )
 
                         Spacer(modifier = Modifier.weight(1f))
 
                         Button(
                             modifier = Modifier
-                                .padding(top = 32.dp),
+                                .padding(top = 32.dp)
+                                .testTag("start_verification_button"),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.DarkGray,
                                 contentColor = Color.LightGray
                             ),
                             onClick = {
                                 buttonClick(
-                                    baseUrl.value.trim(),
-                                    selectedLicenseKey.value.second.trim(),
-                                    countryISOCode.value.trim().ifEmpty { null },
-                                    templateId.value.trim().ifEmpty { null },
-                                    name.value.trim().ifEmpty { null },
-                                    selectedDate.value,
-                                    address.value.trim().ifEmpty { null },
-                                    postalCode.value.trim().ifEmpty { null }
+                                    language.value.trim().ifEmpty { null },
+                                    if (customizeTheme.value) theme.value.trim().ifEmpty { null } else null,
+                                    sessionToken.value.trim().ifEmpty { null }
                                 )
                             }
                         ) {
@@ -478,26 +337,4 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    private fun convertToDOB(millis: Long?): DateOfBirth? {
-        millis?.let {
-            Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-        }?.let {
-            return DateOfBirth(day = it.dayOfMonth, month = it.monthValue, year = it.year)
-        } ?: return null
-    }
-
-    private fun formatDateToLocale(millis: Long?, locale: Locale = Locale.getDefault()): String? {
-        return millis?.let {
-            val formatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(locale)
-            val date = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-            return date.format(formatter)
-        }
-    }
-}
-
-fun LocalDate.toEpochMilli(): Long {
-    return this.atStartOfDay(ZoneId.systemDefault())
-        .toInstant()
-        .toEpochMilli()
 }
