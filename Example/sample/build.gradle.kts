@@ -10,19 +10,18 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
     alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.screenshot)
 }
 
 android {
-    namespace = "io.seon.id_verification"
+    namespace = "io.seon.orchestration_sample"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "io.seon.id_verification"
+        applicationId = "io.seon.orchestration_sample"
         minSdk = 26
         targetSdk = 35
         versionCode = 26
-        versionName = "1.1.11"
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -81,5 +80,5 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.material3)
-    implementation(libs.seon.id.verification)
+    implementation(libs.seon.orchestration)
 }
