@@ -2,6 +2,8 @@ name: Post-Release Validation
 
 on:
   # Trigger when public repo is updated
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
   push:
     branches:
       - master
@@ -46,6 +48,11 @@ jobs:
       
       - name: Setup Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+
+      # - name: Install tree
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y tree
       
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > Example/keystore.jks
@@ -92,8 +99,8 @@ jobs:
             exit 1
           fi
           
-          # Extract seonIdVerification version
-          TOML_VERSION=$(grep -E "^seonIdVerification\s*=\s*\"" "${TOML_FILE}" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          # Extract orchSDK version
+          TOML_VERSION=$(grep -E "^orchSDK\s*=\s*\"" "${TOML_FILE}" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
           
           if [ -z "${TOML_VERSION}" ]; then
             echo "❌ Could not extract version from TOML"
@@ -127,7 +134,7 @@ jobs:
             echo "the latest version in README.md changelog (${README_VERSION})."
             echo ""
             echo "Please update Example/gradle/libs.versions.toml:"
-            echo "  seonIdVerification = \"${README_VERSION}\""
+            echo "  orchSDK = \"${README_VERSION}\""
             echo ""
             echo "match=false" >> $GITHUB_OUTPUT
             exit 1
@@ -152,8 +159,12 @@ jobs:
           
           ./gradlew assembleRelease --stacktrace
           
-          APK_PATH="sample/build/outputs/apk/release/sample-release.apk"
+          APK_PATH="sample/build/outputs/apk/release/sample-release-unsigned.apk"
           
+          # echo ""
+          # echo "Example directory tree (prior to APK check):"
+          # tree -a
+
           if [ ! -f "${APK_PATH}" ]; then
             echo "❌ APK not found at ${APK_PATH}"
             exit 1
@@ -180,6 +191,10 @@ jobs:
           
           APK_PATH="sample/build/outputs/apk/debug/sample-debug.apk"
           
+          # echo ""
+          # echo "Example directory tree (prior to APK check):"
+          # tree -a
+
           if [ ! -f "${APK_PATH}" ]; then
             echo "❌ APK not found at ${APK_PATH}"
             exit 1

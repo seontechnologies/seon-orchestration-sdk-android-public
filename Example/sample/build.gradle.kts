@@ -30,14 +30,6 @@ android {
     }
 
     buildTypes {
-        signingConfigs {
-            create("release") {
-                storeFile = file(rootProject.file("keystore.jks"))
-                storePassword = localProperties["signing.storePassword"]?.toString()
-                keyAlias = localProperties["signing.keyAlias"]?.toString()
-                keyPassword = localProperties["signing.keyPassword"]?.toString()
-            }
-        }
         debug {
             isMinifyEnabled = false
         }
@@ -47,7 +39,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs["release"]
         }
     }
     compileOptions {
