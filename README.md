@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 ```
 [versions]
 ...
-seonOrchSDK = "0.1.1"
+seonOrchSDK = "1.0.0"
 ...
 [libraries]
 ...
@@ -66,7 +66,7 @@ allprojects {
 ```
 dependencies {
     ...
-    implementation "io.seon.orchSDK:orchestration-sdk-android:0.1.1"
+    implementation "io.seon.orchSDK:orchestration-sdk-android:1.0.0"
 }
 ```
 
@@ -174,6 +174,10 @@ private fun handleResult(result: ActivityResult) {
 - For the error codes and how to resolve them, please refer to [this page](ErrorCodes.md).
 
 # Changelog
+
+## 1.0.0
+-   NFC Verification
+-   Minor Improvements
 
 ## 0.1.1
 -   Fixed an issue with the doc-check step
