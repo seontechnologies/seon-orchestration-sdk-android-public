@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 ```
 [versions]
 ...
-seonOrchSDK = "1.0.1"
+seonOrchSDK = "1.0.2"
 ...
 [libraries]
 ...
@@ -66,7 +66,7 @@ allprojects {
 ```
 dependencies {
     ...
-    implementation "io.seon.orchSDK:orchestration-sdk-android:1.0.1"
+    implementation "io.seon.orchSDK:orchestration-sdk-android:1.0.2"
 }
 ```
 
@@ -174,6 +174,9 @@ private fun handleResult(result: ActivityResult) {
 - For the error codes and how to resolve them, please refer to [this page](ErrorCodes.md).
 
 # Changelog
+
+## 1.0.2
+-   Updated SEON Device Fingerprint Android SDK: **6.9.3**
 
 ## 1.0.1
 -   Minor Improvements
