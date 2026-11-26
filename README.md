@@ -27,11 +27,11 @@ dependencyResolutionManagement {
 ```
 [versions]
 ...
-seonOrchSDK = "1.0.2"
+seonOrchSDK = "1.0.3"
 ...
 [libraries]
 ...
-seon-orchestration = { group = "io.seon.orchSDK", name = "orchestration-sdk-android", version.ref = "seonOrchSDK" }
+seon-orchestration = { group = "io.seon", name = "orchestration-android-sdk", version.ref = "seonOrchSDK" }
 ```
 
 - And add this into your module level (eg. app) `build.gradle.kts`:
@@ -66,7 +66,7 @@ allprojects {
 ```
 dependencies {
     ...
-    implementation "io.seon.orchSDK:orchestration-sdk-android:1.0.2"
+    implementation "io.seon:orchestration-android-sdk:1.0.3"
 }
 ```
 
@@ -174,6 +174,10 @@ private fun handleResult(result: ActivityResult) {
 - For the error codes and how to resolve them, please refer to [this page](ErrorCodes.md).
 
 # Changelog
+
+## 1.0.3
+
+- The theme passed to `initialize(theme…)` is now applied to the native loading screens from the first frame (start loader, WebView cover, result loader). Theme colours are passed to the WebView. Partial themes are accepted.
 
 ## 1.0.2
 -   Updated SEON Device Fingerprint Android SDK: **6.9.3**
